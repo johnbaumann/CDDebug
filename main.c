@@ -51,105 +51,137 @@ struct COMMANDS {
     char * displayName;
     unsigned char paramCount;
     unsigned char ackCount;
-    unsigned char params[5];
+    unsigned char params[5];    // We can cache these per-command so it doesn't get tedious going back and forth
 
 } commands[] = {
     "CdlSync",
     0,
-    1, {0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetStat",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlSetloc",
     3,
-    1, {0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlPlay",
     1,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlForward",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlBackward",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlReadN",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlStandby",
     0,
-    2,{0,0,0,0,0},
+    2,
+    {0, 0, 0, 0, 0},
     "CdlStop",
     0,
-    2,{0,0,0,0,0},
+    2,
+    {0, 0, 0, 0, 0},
     "CdlPause",
     0,
-    2,{0,0,0,0,0},
+    2,
+    {0, 0, 0, 0, 0},
     "CdlReset",
     0,
-    2,{0,0,0,0,0},
+    2,
+    {0, 0, 0, 0, 0},
     "CdlMute",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlDemute",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlSetfilter",
     2,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlSetmode",
     1,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetparam",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetlocL",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetlocP",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlReadT",
     1,
-    2,{0,0,0,0,0},
+    2,
+    {0, 0, 0, 0, 0},
     "CdlGetTN",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetTD",
     1,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlSeekL",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlSeekP",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlSetclock",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetclock",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlTest",
     1,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlID",
     0,
-    2,{0,0,0,0,0},
+    2,
+    {0, 0, 0, 0, 0},
     "CdlReadS",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlInit",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlGetQ",
     2,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
     "CdlReadToc",
     0,
-    1,{0,0,0,0,0},
+    1,
+    {0, 0, 0, 0, 0},
 };
 
-unsigned char cmd_params[3] = {0x00, 0x00, 0x00};
+// added 2 for the 0x19 test commands
+unsigned char cmd_params[5] = {0x00, 0x00, 0x00};
 
 char menu_glyph = ' ';
 char menu_start_index = 0;
@@ -329,33 +361,128 @@ void InitCD()
     CDAck();
 }
 
+char paramNibbleSelection = 0;
+char paramByteSelection = 0;
+
 void ResetParamInput(){
 
+    paramByteSelection = 0;     // 0 -> paramCount
+    paramNibbleSelection = 0;   // 0/1
 
 }
 
 // TODO: special case for 19h/test
 void HandleParamInput(int inCommand){
 
-    Blah("Command: %s(0x%02x)\n", commands[menu_index].displayName, menu_index);
-    Blah("Parameters: ");
+    Blah( "\n\n" );
+    Blah("  Command: %s(0x%02x)\n", commands[menu_index].displayName, menu_index);
+    Blah("  Parameters: ");
 
     if (commands[menu_index].paramCount == 0)
     {
-        Blah("None");
+        Blah("  None");
         Blah( "\n\n" );
-        Blah("X = Send\n");
+        Blah("  X = Send\n");
         return;
     }
 
+    int xOffset = 15;
+    int yOFfset = 6;
+    
+    if ( Released( PADLright ) ){
+        paramNibbleSelection++;
+        if ( paramNibbleSelection > 1 ){
+            paramNibbleSelection = 0;
+            paramByteSelection++;
+            if ( paramByteSelection >= commands[menu_index].paramCount ){
+                paramByteSelection = 0;
+                paramNibbleSelection = 0;
+            }
+        }
+    }
+    if ( Released( PADLleft ) ){
+        paramNibbleSelection--;
+        if ( paramNibbleSelection < 0 ){
+            paramNibbleSelection = 0;
+            paramByteSelection--;
+            if ( paramByteSelection < 0 ){
+                paramByteSelection = commands[menu_index].paramCount -1;
+                paramNibbleSelection = 1;
+            }
+        }
+    }
+
+    int highlighterX = (xOffset*CHARWIDTH) + ( CHARWIDTH * 3 * paramByteSelection) + (CHARWIDTH * paramNibbleSelection);
+    highlighterX -= HALFCHAR;
+    int highlighterY = yOFfset*CHARWIDTH;
+    highlighterY -= HALFCHAR;
+
+    Highlight( highlighterX, highlighterY, 8, 8 );
+
+    // handle up down, etc
+    // TODO: could be good to move this to scratchpad so you can keep values between reboots
+    unsigned char paramByte = commands[menu_index].params[paramByteSelection];
+    char nibble = (paramNibbleSelection)? (paramByte & 0xF) : ((paramByte & 0xF0)>>4);
+
+    if ( Released( PADLup ) ){
+        nibble++;
+    }
+
+    if ( Released( PADLdown ) ){
+        nibble--;
+    }
+
+    if ( Released( PADL1 ) ){
+        nibble = 0;
+    }
+
+    if ( Released( PADR1 ) ){
+        nibble = 0xF;
+    }
+
+    if ( Released( PADR2 ) ){
+        nibble = 8;
+    }
+
+    if ( Released( PADL2 ) ){
+        nibble = 8;
+    }
+    
+    if ( nibble < 0x0 ) nibble = 0xF;
+    if ( nibble > 0xF ) nibble = 0x0;
+    
+    if ( paramNibbleSelection ){
+        // the right hand nibble
+        paramByte &= 0xF0;              // just keep the most significant part
+        paramByte |= (nibble & 0x0F);   // then stick the nibble in
+    } else {
+        // the left hand nibble;
+        paramByte &= 0x0F;              // just keep the least significant part
+        paramByte |= ((nibble<<4) & 0xF0);   // then stick the nibble in (sounds like pure gibberish)
+    }
+
+    // write the byte back
+    commands[menu_index].params[paramByteSelection] = paramByte;
+
     for (int i = 0; i < commands[menu_index].paramCount; i++)
     {
-
-        Blah("%02x", cmd_params[i]);
-        if (i + 1 < commands[menu_index].paramCount)
-            Blah(",");
-
+        Blah("%02x ", commands[menu_index].params[i] );
     }
+
+    // this could probably wait, but it's 5 bytes; I'm sure we'll live.
+    NewMemcpy( cmd_params, commands[menu_index].params, sizeof(cmd_params) );
+
+    Blah( "\n\n" );
+    Blah(" Push X for make thing heppen\n" );
+
+    /*
+    Blah( "%d\n", nibble );
+    for (int i = 0; i < commands[menu_index].paramCount; i++)
+    {
+        Blah("%02x ", cmd_params[i] );
+    }
+    Blah( "\n byteSel %d, nibbleSel %d, nibbleVal %d\n", paramByteSelection, paramNibbleSelection, nibble );
+    */
 
 }
 
