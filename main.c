@@ -45,46 +45,109 @@ void DoStuff();
 // out of 1000
 ulong springiness = 830;
 
-const unsigned char cmdCount = 31;
 
-const char cmdStrings[CD_CMD_COUNT][13] = {
+struct COMMANDS {
+
+    char * displayName;
+    unsigned char paramCount;
+    unsigned char ackCount;
+    unsigned char params[5];
+
+} commands[] = {
     "CdlSync",
+    0,
+    1, {0,0,0,0,0},
     "CdlGetStat",
+    0,
+    1,{0,0,0,0,0},
     "CdlSetloc",
+    3,
+    1, {0,0,0,0,0},
     "CdlPlay",
+    1,
+    1,{0,0,0,0,0},
     "CdlForward",
+    0,
+    1,{0,0,0,0,0},
     "CdlBackward",
+    0,
+    1,{0,0,0,0,0},
     "CdlReadN",
+    0,
+    1,{0,0,0,0,0},
     "CdlStandby",
+    0,
+    2,{0,0,0,0,0},
     "CdlStop",
+    0,
+    2,{0,0,0,0,0},
     "CdlPause",
+    0,
+    2,{0,0,0,0,0},
     "CdlReset",
+    0,
+    2,{0,0,0,0,0},
     "CdlMute",
+    0,
+    1,{0,0,0,0,0},
     "CdlDemute",
+    0,
+    1,{0,0,0,0,0},
     "CdlSetfilter",
+    2,
+    1,{0,0,0,0,0},
     "CdlSetmode",
+    1,
+    1,{0,0,0,0,0},
     "CdlGetparam",
+    0,
+    1,{0,0,0,0,0},
     "CdlGetlocL",
+    0,
+    1,{0,0,0,0,0},
     "CdlGetlocP",
+    0,
+    1,{0,0,0,0,0},
     "CdlReadT",
+    1,
+    2,{0,0,0,0,0},
     "CdlGetTN",
+    0,
+    1,{0,0,0,0,0},
     "CdlGetTD",
+    1,
+    1,{0,0,0,0,0},
     "CdlSeekL",
+    0,
+    1,{0,0,0,0,0},
     "CdlSeekP",
+    0,
+    1,{0,0,0,0,0},
     "CdlSetclock",
+    0,
+    1,{0,0,0,0,0},
     "CdlGetclock",
+    0,
+    1,{0,0,0,0,0},
     "CdlTest",
+    1,
+    1,{0,0,0,0,0},
     "CdlID",
+    0,
+    2,{0,0,0,0,0},
     "CdlReadS",
+    0,
+    1,{0,0,0,0,0},
     "CdlInit",
+    0,
+    1,{0,0,0,0,0},
     "CdlGetQ",
-    "CdlReadToc"};
-
-static const unsigned char paramCount[CD_CMD_COUNT] = {0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0,
-                                                       0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0};
-
-static const unsigned char ackCount[CD_CMD_COUNT] = {1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1,
-                                                     1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2};
+    2,
+    1,{0,0,0,0,0},
+    "CdlReadToc",
+    0,
+    1,{0,0,0,0,0},
+};
 
 unsigned char cmd_params[3] = {0x00, 0x00, 0x00};
 
@@ -225,14 +288,14 @@ void SendTheCommand()
 {
     CDStartCommand();
 
-    for (int i = 0; i < paramCount[menu_index]; i++)
+    for (int i = 0; i < commands[menu_index].paramCount ; i++)
     {
         CDWriteParam(cmd_params[i]);
     }
 
     CDWriteCommand(menu_index);
 
-    for(int i = 0; i < ackCount[menu_index]; i++)
+    for(int i = 0; i < commands[menu_index].ackCount; i++)
     {
         CDAck();
     }
@@ -264,6 +327,45 @@ void InitCD()
     CDAck();
     CDSendCommand_Init();
     CDAck();
+}
+
+void ResetParamInput(){
+
+
+}
+
+// TODO: special case for 19h/test
+void HandleParamInput(int inCommand){
+
+    Blah("Command: %s(0x%02x)\n", commands[menu_index].displayName, menu_index);
+    Blah("Parameters: ");
+
+    if (commands[menu_index].paramCount == 0)
+    {
+        Blah("None");
+        Blah( "\n\n" );
+        Blah("X = Send\n");
+        return;
+    }
+
+    for (int i = 0; i < commands[menu_index].paramCount; i++)
+    {
+
+        Blah("%02x", cmd_params[i]);
+        if (i + 1 < commands[menu_index].paramCount)
+            Blah(",");
+
+    }
+
+}
+
+
+void SetState(int inState){
+
+    ResetParamInput();
+
+    uistate = inState;
+
 }
 
 int main()
@@ -306,27 +408,13 @@ int main()
             for (int i = menu_start_index; i < menu_start_index + items_per_page && i < CD_CMD_COUNT; i++)
             {
                 menu_glyph = (i == menu_index) ? '>' : ' ';
-                Blah("%c%s\n", menu_glyph, cmdStrings[i]);
+                Blah("%c%s\n", menu_glyph, commands[i].displayName );
             }
             break;
 
         case Parameter_Input:
-            Blah("Command: %s(0x%02x)\n", cmdStrings[menu_index], menu_index);
-            Blah("Parameters: ");
-
-            if (paramCount[menu_index] == 0)
-            {
-                Blah("None");
-            }
-            else
-            {
-                for (int i = 0; i < paramCount[menu_index]; i++)
-                {
-                    Blah("%02x", cmd_params[i]);
-                    if (i + 1 < paramCount[menu_index])
-                        Blah(",");
-                }
-            }
+            
+            HandleParamInput(menu_index);
             break;
 
         case Command_Result:
@@ -376,7 +464,7 @@ void DoStuff()
     case Parameter_Input:
         if (Released(PADRup))
         {
-            uistate = Command_List;
+            SetState(Command_List);
         }
         break; // Parameter_Input
 
@@ -387,7 +475,13 @@ void DoStuff()
 
     if (Released(PADRright))
     {
-        is_running = 0;
+        
+        if ( uistate != Command_List ){
+            SetState(Command_List);
+        } else {
+            is_running = 0;
+        }
+        
     }
 
     if (Released(PADRdown))
@@ -395,17 +489,17 @@ void DoStuff()
         switch (uistate)
         {
         case Command_List:
-            uistate = Parameter_Input;
+            SetState(Parameter_Input);
             break;
 
         case Parameter_Input:
             // Send command
             SendTheCommand();
-            uistate = Command_Result;
+            SetState(Command_Result);
             break;
 
         case Command_Result:
-            uistate = Command_List;
+            SetState(Command_List);
             break;
         }
     }
@@ -420,11 +514,11 @@ void DoStuff()
             break;
 
         case Parameter_Input:
-            uistate = Command_List;
+            SetState(Command_List);
             break;
 
         case Command_Result:
-            uistate = Command_List;
+            SetState(Command_List);
             break;
         }
     }
