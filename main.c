@@ -1,14 +1,14 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-// 
+//
 // Standard kinda fare though, no explicit or implied warranty.
 // Any issues arising from the use of this software are your own.
-// 
+//
 // https://github.com/JonathanDotCel
 //
 
-#ifndef  MAINC
+#ifndef MAINC
 #define MAINC
 
 // variadic logging
@@ -25,9 +25,12 @@
 #include "pads.h"
 #include "ttyredirect.h"
 #include "config.h"
-#include "flappycredits.h"
 #include "gpu.h"
 #include "timloader.h"
+#include "cd.h"
+
+#define CD_CMD_COUNT 31
+#define CD_RESPONSE_LENGTH 0x20
 
 //
 // Protos
@@ -39,198 +42,392 @@ void DoStuff();
 // TIM and Sprite data
 //
 
-// Seamonstah
-extern ulong lobster_tim;
-extern ulong octo_happy_tim;
-extern ulong octo_angery_tim;
-TIMData lobster;
-TIMData happy;
-TIMData angery;
-
-#define NUMSPRITES 20
-Sprite critterSprites[NUMSPRITES];
-
 // out of 1000
 ulong springiness = 830;
 
+const unsigned char cmdCount = 31;
 
-int main(){
-	
-	//ResetEntryInt();
-	ExitCritical();
+const char cmdStrings[CD_CMD_COUNT][13] = {
+    "CdlSync",
+    "CdlGetStat",
+    "CdlSetloc",
+    "CdlPlay",
+    "CdlForward",
+    "CdlBackward",
+    "CdlReadN",
+    "CdlStandby",
+    "CdlStop",
+    "CdlPause",
+    "CdlReset",
+    "CdlMute",
+    "CdlDemute",
+    "CdlSetfilter",
+    "CdlSetmode",
+    "CdlGetparam",
+    "CdlGetlocL",
+    "CdlGetlocP",
+    "CdlReadT",
+    "CdlGetTN",
+    "CdlGetTD",
+    "CdlSeekL",
+    "CdlSeekP",
+    "CdlSetclock",
+    "CdlGetclock",
+    "CdlTest",
+    "CdlID",
+    "CdlReadS",
+    "CdlInit",
+    "CdlGetQ",
+    "CdlReadToc"};
 
-	// Clear the text buffer
-	InitBuffer();
-	
-	// Init the pads after the GPU so there are no active
-	// interrupts and we get one frame of visual confirmation.
-	
-	NewPrintf( "Init GPU...\n" );
-	InitGPU();
+static const unsigned char paramCount[CD_CMD_COUNT] = {0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0,
+                                                       0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0};
 
-	NewPrintf( "Init Pads...\n" );
-	InitPads();
+static const unsigned char ackCount[CD_CMD_COUNT] = {1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1,
+                                                     1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2};
 
-    // Enable this if you're not inheriting a TTY redirect device from Unirom, n00bROM, etc
-	//InstallTTY();
-	//NewPrintf( "You can now use NewPrintf() functions!\n" );	
+unsigned char cmd_params[3] = {0x00, 0x00, 0x00};
 
-    // Upload the sprites to VRAM
-    // we can use the position define in the TIM header
-    // or (as here) manually specify
+char menu_glyph = ' ';
+char menu_start_index = 0;
+char menu_index = 0;
 
-    // Just an example of how you can lay out the CLUT (pallete) data and the actual pixels in VRAM
-    // Here the CLUTs are at 512,0 stacked vertically down
-    // The actual images are on the next 64px texture page after that, randomly as an example
-    // e.g. lobster at 576x16, happy is to the right of lobster, angery is below happy. (L shape)
+const int items_per_page = 20;
+const int total_num_pages = (CD_CMD_COUNT + (items_per_page - 1)) / items_per_page;
 
-    // visual learners: https://i.imgur.com/aKbwsL7.png
-    // Icons courtesy of icons8.com
+static ulong lastInt = 0;
+static ulong lastResponse = 0;
+static char cdResponseBuffer[CD_RESPONSE_LENGTH];
+char *GetCDResponseBuffer() { return (char *)&cdResponseBuffer; }
 
-    UploadTim( (char*)&lobster_tim, &lobster, SCREEN_WIDTH + TEXPAGE_WIDTH, 1, SCREEN_WIDTH + TEXPAGE_WIDTH, 16 );
-    // to the right
-    UploadTim( (char*)&octo_happy_tim, &happy, SCREEN_WIDTH + TEXPAGE_WIDTH , 2, lobster.vramX+lobster.vramWidth *2 , lobster.vramY );        
-    // below    
-    UploadTim( (char*)&octo_angery_tim, &angery, SCREEN_WIDTH + TEXPAGE_WIDTH, 3, happy.vramX, happy.vramY + happy.vramHeight );        
-    
-    // now make some sprites, and link them to the locations we just set up in VRAM
-    
-    for( int i = 0; i < NUMSPRITES; i++ ){
+enum UIState
+{
+    Command_List,
+    Parameter_Input,
+    Command_Result
+} uistate = Command_List;
 
-        Sprite * s = &critterSprites[i];
-        switch (i%3)
+char is_running = 1;
+
+static __attribute__((always_inline)) int CDClearInts()
+{
+
+    pCDREG0 = 1;
+    pCDREG3 = 0x1F;
+
+    // pCDREG0 = 0;
+}
+
+#pragma GCC push options
+#pragma GCC optimize("-O0")
+// Warning: does not ack or clear ints
+// Call CDMultiAck() instead if you want to ack
+// an interrupt and dump the values to the default buffer.
+char CDReadResponses(char *inBuffer, ulong maxLength)
+{
+
+    // Ack() first
+
+    char lastReadVal = 0;
+
+    int numRead = 0;
+
+    while ((pCDREG0 & CDREG0_DATA_IN_RESPONSEFIFO) != 0)
+    {
+
+        lastReadVal = CDReadResponse() & 0xFF;
+        *inBuffer++ = lastReadVal;
+
+        numRead++;
+    }
+
+    return numRead;
+
+    // ClearInts() after
+}
+#pragma GCC pop optionss
+
+int CDReadResponse()
+{
+
+    // select response Reg1, index1 : Response fifo
+    pCDREG0 = 0x01;
+    char returnValue = pCDREG1;
+
+    return returnValue;
+}
+
+void CDStartCommand()
+{
+
+    int i;
+
+    while ((pCDREG0 & CDREG0_DATA_IN_DATAFIFO) != 0)
+        ;
+    while ((pCDREG0 & CDREG0_DATA_BUSY) != 0)
+        ;
+
+    // Select Reg3,Index 1 : 0x1F resets all IRQ bits
+    CDClearInts();
+
+    // Reg2 Index 0 = param fifo
+    pCDREG0 = 0;
+}
+
+int CDWaitInt()
+{
+
+    // would break ability to get multiple responses
+    // from the 2nd int
+    // CDClearInts();
+
+    // Reg 3 index 1 = Interrupt flags
+    // note: shell puts 'reg0=1' inside the while loop
+    pCDREG0 = 1;
+    while ((pCDREG3 & 0x07) == 0)
+        ;
+
+    int returnInt = (pCDREG3 & 0x07);
+
+    return returnInt;
+}
+
+void CDWriteParam(uchar inParam)
+{
+
+    // pCDREG0 = 0;                //not required in a loop, but good practice?
+    pCDREG2 = inParam;
+}
+
+#pragma GCC push options
+#pragma GCC optimize("-O0")
+void CDWriteCommand(uchar inCommand)
+{
+    // Finish by writing the command
+    pCDREG0 = 0;
+    pCDREG1 = inCommand;
+}
+#pragma gcc pop options
+
+#pragma GCC options push
+#pragma GCC optimise("-O0") // required to get the printf in the right order
+// returns: last response value
+int CDAck()
+{
+    lastInt = CDWaitInt();
+    lastResponse = CDReadResponse();
+    CDClearInts();
+    return lastResponse;
+}
+#pragma GCC options pop
+
+void SendTheCommand()
+{
+    CDStartCommand();
+
+    for (int i = 0; i < paramCount[menu_index]; i++)
+    {
+        CDWriteParam(cmd_params[i]);
+    }
+
+    CDWriteCommand(menu_index);
+
+    for(int i = 0; i < ackCount[menu_index]; i++)
+    {
+        CDAck();
+    }
+}
+
+void CDSendCommand_GetStat()
+{
+    CDStartCommand();
+    CDWriteCommand(CD_CMD_GETSTAT);
+}
+
+static void CDSendCommand_Init()
+{
+    CDStartCommand();
+    CDWriteCommand(CD_CMD_INIT);
+}
+
+void InitCD()
+{
+    CDClearInts();
+
+    pCDREG0 = 0;
+    pCDREG3 = 0;
+    pCOM_DELAY = 4901;
+
+    CDSendCommand_GetStat();
+    CDAck();
+    CDSendCommand_GetStat();
+    CDAck();
+    CDSendCommand_Init();
+    CDAck();
+}
+
+int main()
+{
+    //ResetEntryInt();
+    ExitCritical();
+
+    // Clear the text buffer
+    InitBuffer();
+
+    // Init the pads after the GPU so there are no active
+    // interrupts and we get one frame of visual confirmation.
+
+    //NewPrintf("Init GPU...\n");
+    InitGPU();
+
+    //NewPrintf("Init Pads...\n");
+    InitPads();
+
+    //RemoveTTY();
+    //InstallTTY();
+
+    InitCD();
+
+    // Main loop
+    while (is_running)
+    {
+
+        MonitorPads();
+
+        ClearScreenText();
+        DrawBG();
+
+        Blah("\n\n");
+
+        switch (uistate)
         {
-            default: s->data = &lobster; break;
-            case 1: s->data = &happy; break;
-            case 2: s->data = &angery; break;
-        }        
-        s->xPos = i + (20 * i);
-        s->yPos = 30;
-        s->height = 40 - i;
-        s->width = 40 - i;
+        case Command_List:
+            Blah("CD Commands: Page %i/%i\n", (menu_start_index / items_per_page) + 1, total_num_pages);
+            for (int i = menu_start_index; i < menu_start_index + items_per_page && i < CD_CMD_COUNT; i++)
+            {
+                menu_glyph = (i == menu_index) ? '>' : ' ';
+                Blah("%c%s\n", menu_glyph, cmdStrings[i]);
+            }
+            break;
 
+        case Parameter_Input:
+            Blah("Command: %s(0x%02x)\n", cmdStrings[menu_index], menu_index);
+            Blah("Parameters: ");
+
+            if (paramCount[menu_index] == 0)
+            {
+                Blah("None");
+            }
+            else
+            {
+                for (int i = 0; i < paramCount[menu_index]; i++)
+                {
+                    Blah("%02x", cmd_params[i]);
+                    if (i + 1 < paramCount[menu_index])
+                        Blah(",");
+                }
+            }
+            break;
+
+        case Command_Result:
+            Blah("RESULT = INT%i(0x%02x)\n", lastInt, lastResponse);
+            break;
+        }
+
+        DoStuff();
+
+        Draw();
     }
 
-
-	// Main loop
-	while ( 1 ){
-		
-		MonitorPads();
-		
-		ClearScreenText();
-		
-		C64Border();
-        
-		Blah( "\n\n\n\n\n\n\n\n\n                Hello world!     -     Frame %d\n\n\n", GetFrameCount() );
-		Blah( "        Dpad  : move block\n" );
-		Blah( "        X     : flappy credits\n" );
-		Blah( "        O     : reboot\n" );
-        Blah( "        L1/R1 : springiness %d of 1000\n", springiness );
-		Blah( "        R4    : debug\n" );  // there's no r4
-		
-		DoStuff();
-
-		Draw();
-		
-	}
-	
+    return 1;
 }
 
+void DoStuff()
+{
+    switch (uistate)
+    {
+    case Command_List:
+        if (Released(PADLup))
+        {
+            if (menu_index > 0)
+            {
+                menu_index--;
+            }
+            else
+            {
+                menu_index = CD_CMD_COUNT - 1;
+            }
+            menu_start_index = items_per_page * (menu_index / items_per_page);
+        }
+        if (Released(PADLdown))
+        {
+            if (menu_index < CD_CMD_COUNT - 1)
+            {
+                menu_index++;
+            }
+            else
+            {
+                menu_index = 0;
+            }
+            menu_start_index = items_per_page * (menu_index / items_per_page);
+        }
+        break; // Command_List
 
-static short cursorX = SCREEN_WIDTH / 2;
-static short cursorY = SCREEN_HEIGHT / 2;
+    case Parameter_Input:
+        if (Released(PADRup))
+        {
+            uistate = Command_List;
+        }
+        break; // Parameter_Input
 
+    case Command_Result:
 
-void DoStuff(){
+        break; // Command_Result
+    }          // switch (uistate)
 
-    
-
-	if ( Held( PADLup ) ){
-		cursorY = ( cursorY - 2 ) % SCREEN_HEIGHT;
-	}
-	if ( Held( PADLdown ) ){
-		cursorY = ( cursorY + 2 ) % SCREEN_HEIGHT;
-	}
-	if ( Held( PADLleft ) ){
-		cursorX = ( cursorX - 2 ) % SCREEN_WIDTH;
-	}
-	if ( Held( PADLright ) ){
-		cursorX = ( cursorX + 2 ) % SCREEN_WIDTH;
-	}
-
-	if ( Released( PADRright ) ){
-		// restart via bios
-		goto *(ulong*)0xBFC00000;
-	}
-
-	if ( Released( PADRdown ) ){
-		// restart via bios
-		FlappyCredits();
-	}
-    
-    if ( Released( PADL1 ) ){
-        springiness -= 5;        
+    if (Released(PADRright))
+    {
+        is_running = 0;
     }
 
-    if ( Released( PADR1 ) ){
-        springiness += 5;        
+    if (Released(PADRdown))
+    {
+        switch (uistate)
+        {
+        case Command_List:
+            uistate = Parameter_Input;
+            break;
+
+        case Parameter_Input:
+            // Send command
+            SendTheCommand();
+            uistate = Command_Result;
+            break;
+
+        case Command_Result:
+            uistate = Command_List;
+            break;
+        }
     }
 
-    // Daw the 'cursor'
-	DrawTile( cursorX , cursorY, 20, 20, 0xFF8822 );
+    if (Released(PADRup))
+    {
+        switch (uistate)
+        {
+        case Command_List:
+            menu_index = 0;
+            menu_start_index = 0;
+            break;
 
+        case Parameter_Input:
+            uistate = Command_List;
+            break;
 
-    // at its most basic...
-    //DrawTIMData( &lobster, 20, 20, 28, 28 );
-    //DrawSprite( &critterSprites[0] );
-    //DrawSprite( &critterSprites[1] );
-    //DrawSprite( &critterSprites[2] );
-    
-    
-    
-    for( int i = 0; i < NUMSPRITES ; i++ ){
-        
-        // work out what this sprite is chasing..
-        int targetX = (i == 0) ? cursorX : (critterSprites[ i-1 ].xPos + critterSprites[ i-1 ].width /2 - critterSprites[i].width /2 );
-        int targetY = (i == 0) ? cursorY : (critterSprites[ i-1 ].yPos + critterSprites[ i-1 ].height /2 - critterSprites[i].width /2 );
-
-        // how far are we from the target?
-        int deltaX = targetX - critterSprites[i].xPos;
-        int deltaY = targetY - critterSprites[i].yPos;
- 
-        // e.g. if the gap is 45 pixels, this gives us 450,000
-        critterSprites[i].shiftedVeloX += deltaX * 1000;  // e.g. 45 pix becomes 45k pixels
-        critterSprites[i].shiftedVeloY += deltaY * 1000;
-
-        #define CLAMP 50000
-        // let's not use a clamp function just for the little demonstration
-        if ( critterSprites[i].shiftedVeloX > CLAMP ) critterSprites[i].shiftedVeloX = CLAMP;
-        if ( critterSprites[i].shiftedVeloX < -CLAMP ) critterSprites[i].shiftedVeloX = -CLAMP;
-        if ( critterSprites[i].shiftedVeloY > CLAMP ) critterSprites[i].shiftedVeloY = CLAMP;
-        if ( critterSprites[i].shiftedVeloY < -CLAMP ) critterSprites[i].shiftedVeloY = -CLAMP;
-
-        // we can now divide by 10,000 which gives us 4 pixels
-        // if we handn't multiplied, it would've rounded 45px / 100 down to 0
-        critterSprites[i].xPos += critterSprites[i].shiftedVeloX / (1000 * 22);
-        critterSprites[i].yPos += critterSprites[i].shiftedVeloY / (1000 * 22);
-
-        DrawSprite( &critterSprites[i] );
-
-        // dampen the velo
-        // let's ignore frameate
-        critterSprites[i].shiftedVeloX *= springiness;
-        critterSprites[i].shiftedVeloY *= springiness;
-        critterSprites[i].shiftedVeloX /= 1000;
-        critterSprites[i].shiftedVeloY /= 1000;
-        
-
+        case Command_Result:
+            uistate = Command_List;
+            break;
+        }
     }
-    
-
-    
-    	
 }
-
 
 #endif // ! MAINC
-

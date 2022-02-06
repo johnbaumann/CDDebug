@@ -24,16 +24,15 @@ SOFTWARE.
 
 */
 
-OUTPUT_FORMAT("elf32-tradlittlemips")
 OUTPUT_FORMAT("binary")
 
 EXTERN(_start)
 ENTRY(_start)
 
-TLOAD_ADDR = DEFINED(_TLOAD_ADDR) ? TLOAD_ADDR : 0x80010000;
+TLOAD_ADDR = DEFINED(TLOAD_ADDR) ? TLOAD_ADDR : 0x80010000;
 
 MEMORY {
-    loader      : ORIGIN = 0x8000ffea, LENGTH = 22
+    loader      : ORIGIN = (TLOAD_ADDR - 22), LENGTH = 22
     ram (rwx)   : ORIGIN = 0x80010000, LENGTH = 2M - 0x10000
     dcache      : ORIGIN = 0x1f800000, LENGTH = 0x400
 }
@@ -151,7 +150,7 @@ SECTIONS {
     . = ALIGN(4);
     __bss_end = .;
 
-    __heap_start = .;
+    __heap_start = __heap_base;
 
     __end = .;
 

@@ -207,6 +207,9 @@ void DrawBG(){
 		SCREEN_HEIGHT * 2,
 		BACKGREEN
 	);
+
+
+	BorderTileColor( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000cf );
 	
 }
 

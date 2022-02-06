@@ -36,9 +36,7 @@ drawing.c \
 gpu.c \
 pads.c \
 ttyredirect.c \
-flappycredits.c \
 timloader.c \
-
 
 include ./nugget/common.mk
 

@@ -5,6 +5,22 @@
 #ifndef HWREGS_H
 #define HWREGS_H
 
+// Shared by the CD and IRQ handlers
+#define CDREG0 0xBF801800
+#define pCDREG0 *(volatile uchar*)CDREG0
+
+#define CDREG1 0xBF801801
+#define pCDREG1 *(volatile uchar*)CDREG1
+
+#define CDREG2 0xBF801802
+#define pCDREG2 *(volatile uchar*)CDREG2
+
+#define CDREG3 0xBF801803
+#define pCDREG3 *(volatile uchar*)CDREG3
+
+#define CDISTAT 0xBF801070
+#define pCDISTAT *(volatile ushort*)CDISTAT
+
 #define ISTAT 0xBF801070
 #define	pISTAT *(volatile ulong*)ISTAT
 

@@ -1,0 +1,47 @@
+    {
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "gdb",
+            "request": "launch",
+            "name": "(gdb) Launch helloworld",
+            "target": "./helloworld.elf",
+            "gdbpath": "/usr/bin/gdb-multiarch",
+            "windows": {
+                "gdbpath": "C:/gdb-multiarch/bin/gdb.exe",
+            },
+            "preLaunchTask": "Build",
+            "cwd": "${workspaceRoot}",
+            "autorun": [
+                "set remote interrupt-sequence Ctrl-C",
+                "target remote localhost:3333",
+                "set substitute-path /project .",
+                "monitor reset shellhalt",
+                "load ./helloworld.elf",
+                //"tbreak main",
+                "continue",
+            ],
+            "valuesFormatting": "parseText"
+        },
+
+        {
+            "name": "(gdb) Launch PCSX-Redux",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "C:/Users/John/source/repos/pcsx-redux/vsprojects/x64/Release/pcsx-redux.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

@@ -2,12 +2,6 @@
 
 cls
 
-echo .
-echo Hit ctrl+c if this was a mistake.
-echo .
-pause
-
-
 REM Regular Build Stuff
 
 del *.rom
