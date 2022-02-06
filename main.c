@@ -45,13 +45,13 @@ void DoStuff();
 // out of 1000
 ulong springiness = 830;
 
+struct COMMANDS
+{
 
-struct COMMANDS {
-
-    char * displayName;
+    char *displayName;
     unsigned char paramCount;
     unsigned char ackCount;
-    unsigned char params[5];    // We can cache these per-command so it doesn't get tedious going back and forth
+    unsigned char params[5]; // We can cache these per-command so it doesn't get tedious going back and forth
 
 } commands[] = {
     "CdlSync",
@@ -176,7 +176,7 @@ struct COMMANDS {
     {0, 0, 0, 0, 0},
     "CdlReadToc",
     0,
-    1,
+    2,
     {0, 0, 0, 0, 0},
 };
 
@@ -192,6 +192,7 @@ const int total_num_pages = (CD_CMD_COUNT + (items_per_page - 1)) / items_per_pa
 
 static ulong lastInt = 0;
 static ulong lastResponse = 0;
+static ulong lastResponseLength = 0;
 static char cdResponseBuffer[CD_RESPONSE_LENGTH];
 char *GetCDResponseBuffer() { return (char *)&cdResponseBuffer; }
 
@@ -320,16 +321,18 @@ void SendTheCommand()
 {
     CDStartCommand();
 
-    for (int i = 0; i < commands[menu_index].paramCount ; i++)
+    for (int i = 0; i < commands[menu_index].paramCount; i++)
     {
         CDWriteParam(cmd_params[i]);
     }
 
     CDWriteCommand(menu_index);
 
-    for(int i = 0; i < commands[menu_index].ackCount; i++)
+    for (int i = 0; i < commands[menu_index].ackCount; i++)
     {
-        CDAck();
+        lastInt = CDWaitInt();
+        lastResponseLength = CDReadResponses(cdResponseBuffer, CD_RESPONSE_LENGTH);
+        CDClearInts();
     }
 }
 
@@ -364,101 +367,119 @@ void InitCD()
 char paramNibbleSelection = 0;
 char paramByteSelection = 0;
 
-void ResetParamInput(){
+void ResetParamInput()
+{
 
-    paramByteSelection = 0;     // 0 -> paramCount
-    paramNibbleSelection = 0;   // 0/1
-
+    paramByteSelection = 0;   // 0 -> paramCount
+    paramNibbleSelection = 0; // 0/1
 }
 
 // TODO: special case for 19h/test
-void HandleParamInput(int inCommand){
+void HandleParamInput(int inCommand)
+{
 
-    Blah( "\n\n" );
+    Blah("\n\n");
     Blah("  Command: %s(0x%02x)\n", commands[menu_index].displayName, menu_index);
     Blah("  Parameters: ");
 
     if (commands[menu_index].paramCount == 0)
     {
         Blah("  None");
-        Blah( "\n\n" );
+        Blah("\n\n");
         Blah("  X = Send\n");
         return;
     }
 
     int xOffset = 15;
     int yOFfset = 6;
-    
-    if ( Released( PADLright ) ){
+
+    if (Released(PADLright))
+    {
         paramNibbleSelection++;
-        if ( paramNibbleSelection > 1 ){
+        if (paramNibbleSelection > 1)
+        {
             paramNibbleSelection = 0;
             paramByteSelection++;
-            if ( paramByteSelection >= commands[menu_index].paramCount ){
+            if (paramByteSelection >= commands[menu_index].paramCount)
+            {
                 paramByteSelection = 0;
                 paramNibbleSelection = 0;
             }
         }
     }
-    if ( Released( PADLleft ) ){
+    if (Released(PADLleft))
+    {
         paramNibbleSelection--;
-        if ( paramNibbleSelection < 0 ){
+        if (paramNibbleSelection < 0)
+        {
             paramNibbleSelection = 0;
             paramByteSelection--;
-            if ( paramByteSelection < 0 ){
-                paramByteSelection = commands[menu_index].paramCount -1;
+            if (paramByteSelection < 0)
+            {
+                paramByteSelection = commands[menu_index].paramCount - 1;
                 paramNibbleSelection = 1;
             }
         }
     }
 
-    int highlighterX = (xOffset*CHARWIDTH) + ( CHARWIDTH * 3 * paramByteSelection) + (CHARWIDTH * paramNibbleSelection);
+    int highlighterX = (xOffset * CHARWIDTH) + (CHARWIDTH * 3 * paramByteSelection) + (CHARWIDTH * paramNibbleSelection);
     highlighterX -= HALFCHAR;
-    int highlighterY = yOFfset*CHARWIDTH;
+    int highlighterY = yOFfset * CHARWIDTH;
     highlighterY -= HALFCHAR;
 
-    Highlight( highlighterX, highlighterY, 8, 8 );
+    Highlight(highlighterX, highlighterY, 8, 8);
 
     // handle up down, etc
     // TODO: could be good to move this to scratchpad so you can keep values between reboots
     unsigned char paramByte = commands[menu_index].params[paramByteSelection];
-    char nibble = (paramNibbleSelection)? (paramByte & 0xF) : ((paramByte & 0xF0)>>4);
+    char nibble = (paramNibbleSelection) ? (paramByte & 0xF) : ((paramByte & 0xF0) >> 4);
 
-    if ( Released( PADLup ) ){
+    if (Released(PADLup))
+    {
         nibble++;
     }
 
-    if ( Released( PADLdown ) ){
+    if (Released(PADLdown))
+    {
         nibble--;
     }
 
-    if ( Released( PADL1 ) ){
+    if (Released(PADL1))
+    {
         nibble = 0;
     }
 
-    if ( Released( PADR1 ) ){
+    if (Released(PADR1))
+    {
         nibble = 0xF;
     }
 
-    if ( Released( PADR2 ) ){
+    if (Released(PADR2))
+    {
         nibble = 8;
     }
 
-    if ( Released( PADL2 ) ){
+    if (Released(PADL2))
+    {
         nibble = 8;
     }
-    
-    if ( nibble < 0x0 ) nibble = 0xF;
-    if ( nibble > 0xF ) nibble = 0x0;
-    
-    if ( paramNibbleSelection ){
+
+    if (nibble < 0x0)
+        nibble = 0xF;
+    if (nibble > 0xF)
+        nibble = 0x0;
+
+    if (paramNibbleSelection)
+    {
         // the right hand nibble
-        paramByte &= 0xF0;              // just keep the most significant part
-        paramByte |= (nibble & 0x0F);   // then stick the nibble in
-    } else {
+        paramByte &= 0xF0;            // just keep the most significant part
+        paramByte |= (nibble & 0x0F); // then stick the nibble in
+    }
+    else
+    {
         // the left hand nibble;
-        paramByte &= 0x0F;              // just keep the least significant part
-        paramByte |= ((nibble<<4) & 0xF0);   // then stick the nibble in (sounds like pure gibberish)
+        paramByte &= 0x0F;                   // just keep the least significant part
+        paramByte |= ((nibble << 4) & 0xF0); // then stick the nibble in (sounds like pure gibberish)
     }
 
     // write the byte back
@@ -466,14 +487,14 @@ void HandleParamInput(int inCommand){
 
     for (int i = 0; i < commands[menu_index].paramCount; i++)
     {
-        Blah("%02x ", commands[menu_index].params[i] );
+        Blah("%02x ", commands[menu_index].params[i]);
     }
 
     // this could probably wait, but it's 5 bytes; I'm sure we'll live.
-    NewMemcpy( cmd_params, commands[menu_index].params, sizeof(cmd_params) );
+    NewMemcpy(cmd_params, commands[menu_index].params, sizeof(cmd_params));
 
-    Blah( "\n\n" );
-    Blah(" Push X for make thing heppen\n" );
+    Blah("\n\n");
+    Blah(" Push X for make thing heppen\n");
 
     /*
     Blah( "%d\n", nibble );
@@ -483,16 +504,14 @@ void HandleParamInput(int inCommand){
     }
     Blah( "\n byteSel %d, nibbleSel %d, nibbleVal %d\n", paramByteSelection, paramNibbleSelection, nibble );
     */
-
 }
 
-
-void SetState(int inState){
+void SetState(int inState)
+{
 
     ResetParamInput();
 
     uistate = inState;
-
 }
 
 int main()
@@ -535,17 +554,24 @@ int main()
             for (int i = menu_start_index; i < menu_start_index + items_per_page && i < CD_CMD_COUNT; i++)
             {
                 menu_glyph = (i == menu_index) ? '>' : ' ';
-                Blah("%c%s\n", menu_glyph, commands[i].displayName );
+                Blah("%c%s\n", menu_glyph, commands[i].displayName);
             }
             break;
 
         case Parameter_Input:
-            
+
             HandleParamInput(menu_index);
             break;
 
         case Command_Result:
-            Blah("RESULT = INT%i(0x%02x)\n", lastInt, lastResponse);
+            Blah("RESULT = INT%i(", lastInt, lastResponse);
+            for(int i = 0; i < lastResponseLength; i++)
+            {
+                Blah("0x%02x", cdResponseBuffer[i]);
+                if(i + 1 < lastResponseLength)
+                    Blah(",");
+            }
+            Blah(")\n");
             break;
         }
 
@@ -602,13 +628,15 @@ void DoStuff()
 
     if (Released(PADRright))
     {
-        
-        if ( uistate != Command_List ){
+
+        if (uistate != Command_List)
+        {
             SetState(Command_List);
-        } else {
+        }
+        else
+        {
             is_running = 0;
         }
-        
     }
 
     if (Released(PADRdown))
