@@ -564,6 +564,14 @@ int main()
             break;
 
         case Command_Result:
+            Blah("COMMAND: %s(", commands[menu_index].displayName);
+            for(int i = 0; i < commands[menu_index].paramCount; i++)
+            {
+                Blah("0x%02x", cmd_params[i]);
+                if(i + 1 < commands[menu_index].paramCount)
+                    Blah(",");
+            }
+            Blah(")\n");
             Blah("RESULT = INT%i(", lastInt, lastResponse);
             for(int i = 0; i < lastResponseLength; i++)
             {
