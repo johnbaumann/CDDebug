@@ -29,9 +29,6 @@
 #include "timloader.h"
 #include "cd.h"
 
-#define CD_CMD_COUNT 31
-#define CD_RESPONSE_LENGTH 0x20
-
 //
 // Protos
 //
@@ -45,156 +42,6 @@ void DoStuff();
 // out of 1000
 ulong springiness = 830;
 
-struct COMMANDS
-{
-
-    char *displayName;
-    unsigned char paramCount;
-    unsigned char ackCount;
-    unsigned char params[5]; // We can cache these per-command so it doesn't get tedious going back and forth
-
-} commands[] = {
-    "CdlSync",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetStat",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlSetloc",
-    3,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlPlay",
-    1,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlForward",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlBackward",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlReadN",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlStandby",
-    0,
-    2,
-    {0, 0, 0, 0, 0},
-    "CdlStop",
-    0,
-    2,
-    {0, 0, 0, 0, 0},
-    "CdlPause",
-    0,
-    2,
-    {0, 0, 0, 0, 0},
-    "CdlReset",
-    0,
-    2,
-    {0, 0, 0, 0, 0},
-    "CdlMute",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlDemute",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlSetfilter",
-    2,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlSetmode",
-    1,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetparam",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetlocL",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetlocP",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlReadT",
-    1,
-    2,
-    {0, 0, 0, 0, 0},
-    "CdlGetTN",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetTD",
-    1,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlSeekL",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlSeekP",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlSetclock",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetclock",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlTest",
-    1,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlID",
-    0,
-    2,
-    {0, 0, 0, 0, 0},
-    "CdlReadS",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlInit",
-    0,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlGetQ",
-    2,
-    1,
-    {0, 0, 0, 0, 0},
-    "CdlReadToc",
-    0,
-    2,
-    {0, 0, 0, 0, 0},
-};
-
-// added 2 for the 0x19 test commands
-unsigned char cmd_params[5] = {0x00, 0x00, 0x00};
-
-char menu_glyph = ' ';
-char menu_start_index = 0;
-char menu_index = 0;
-
-const int items_per_page = 20;
-const int total_num_pages = (CD_CMD_COUNT + (items_per_page - 1)) / items_per_page;
-
-static ulong lastInt = 0;
-static ulong lastResponse = 0;
-static ulong lastResponseLength = 0;
-static char cdResponseBuffer[CD_RESPONSE_LENGTH];
-char *GetCDResponseBuffer() { return (char *)&cdResponseBuffer; }
 
 enum UIState
 {
@@ -205,167 +52,17 @@ enum UIState
 
 char is_running = 1;
 
-static __attribute__((always_inline)) int CDClearInts()
-{
-
-    pCDREG0 = 1;
-    pCDREG3 = 0x1F;
-
-    // pCDREG0 = 0;
-}
-
-#pragma GCC push options
-#pragma GCC optimize("-O0")
-// Warning: does not ack or clear ints
-// Call CDMultiAck() instead if you want to ack
-// an interrupt and dump the values to the default buffer.
-char CDReadResponses(char *inBuffer, ulong maxLength)
-{
-
-    // Ack() first
-
-    char lastReadVal = 0;
-
-    int numRead = 0;
-
-    while ((pCDREG0 & CDREG0_DATA_IN_RESPONSEFIFO) != 0)
-    {
-
-        lastReadVal = CDReadResponse() & 0xFF;
-        *inBuffer++ = lastReadVal;
-
-        numRead++;
-    }
-
-    return numRead;
-
-    // ClearInts() after
-}
-#pragma GCC pop optionss
-
-int CDReadResponse()
-{
-
-    // select response Reg1, index1 : Response fifo
-    pCDREG0 = 0x01;
-    char returnValue = pCDREG1;
-
-    return returnValue;
-}
-
-void CDStartCommand()
-{
-
-    int i;
-
-    while ((pCDREG0 & CDREG0_DATA_IN_DATAFIFO) != 0)
-        ;
-    while ((pCDREG0 & CDREG0_DATA_BUSY) != 0)
-        ;
-
-    // Select Reg3,Index 1 : 0x1F resets all IRQ bits
-    CDClearInts();
-
-    // Reg2 Index 0 = param fifo
-    pCDREG0 = 0;
-}
-
-int CDWaitInt()
-{
-
-    // would break ability to get multiple responses
-    // from the 2nd int
-    // CDClearInts();
-
-    // Reg 3 index 1 = Interrupt flags
-    // note: shell puts 'reg0=1' inside the while loop
-    pCDREG0 = 1;
-    while ((pCDREG3 & 0x07) == 0)
-        ;
-
-    int returnInt = (pCDREG3 & 0x07);
-
-    return returnInt;
-}
-
-void CDWriteParam(uchar inParam)
-{
-
-    // pCDREG0 = 0;                //not required in a loop, but good practice?
-    pCDREG2 = inParam;
-}
-
-#pragma GCC push options
-#pragma GCC optimize("-O0")
-void CDWriteCommand(uchar inCommand)
-{
-    // Finish by writing the command
-    pCDREG0 = 0;
-    pCDREG1 = inCommand;
-}
-#pragma gcc pop options
-
-#pragma GCC options push
-#pragma GCC optimise("-O0") // required to get the printf in the right order
-// returns: last response value
-int CDAck()
-{
-    lastInt = CDWaitInt();
-    lastResponse = CDReadResponse();
-    CDClearInts();
-    return lastResponse;
-}
-#pragma GCC options pop
-
-void SendTheCommand()
-{
-    CDStartCommand();
-
-    for (int i = 0; i < commands[menu_index].paramCount; i++)
-    {
-        CDWriteParam(cmd_params[i]);
-    }
-
-    CDWriteCommand(menu_index);
-
-    for (int i = 0; i < commands[menu_index].ackCount; i++)
-    {
-        lastInt = CDWaitInt();
-        lastResponseLength = CDReadResponses(cdResponseBuffer, CD_RESPONSE_LENGTH);
-        CDClearInts();
-    }
-}
-
-void CDSendCommand_GetStat()
-{
-    CDStartCommand();
-    CDWriteCommand(CD_CMD_GETSTAT);
-}
-
-static void CDSendCommand_Init()
-{
-    CDStartCommand();
-    CDWriteCommand(CD_CMD_INIT);
-}
-
-void InitCD()
-{
-    CDClearInts();
-
-    pCDREG0 = 0;
-    pCDREG3 = 0;
-    pCOM_DELAY = 4901;
-
-    CDSendCommand_GetStat();
-    CDAck();
-    CDSendCommand_GetStat();
-    CDAck();
-    CDSendCommand_Init();
-    CDAck();
-}
 
 char paramNibbleSelection = 0;
 char paramByteSelection = 0;
+
+
+char menu_glyph = ' ';
+char menu_start_index = 0;
+char menu_index = 0;
+
+const int items_per_page = 20;
+const int total_num_pages = (CD_CMD_COUNT + (items_per_page - 1)) / items_per_page;
 
 void ResetParamInput()
 {
@@ -535,7 +232,10 @@ int main()
     //InstallTTY();
 
     InitCD();
-
+    NewPrintf("d86 = %4X\n", *(volatile unsigned short *)0x1F801D86);
+    NewPrintf("d84 = %4X\n", *(volatile unsigned short *)0x1F801D84);
+    NewPrintf("d82 = %4X\n", *(volatile unsigned short *)0x1F801D82);
+    NewPrintf("d80 = %4X\n", *(volatile unsigned short *)0x1F801D80);
     // Main loop
     while (is_running)
     {
@@ -565,18 +265,18 @@ int main()
 
         case Command_Result:
             Blah("COMMAND: %s(", commands[menu_index].displayName);
-            for(int i = 0; i < commands[menu_index].paramCount; i++)
+            for (int i = 0; i < commands[menu_index].paramCount; i++)
             {
                 Blah("0x%02x", cmd_params[i]);
-                if(i + 1 < commands[menu_index].paramCount)
+                if (i + 1 < commands[menu_index].paramCount)
                     Blah(",");
             }
             Blah(")\n");
             Blah("RESULT = INT%i(", lastInt, lastResponse);
-            for(int i = 0; i < lastResponseLength; i++)
+            for (int i = 0; i < lastResponseLength; i++)
             {
                 Blah("0x%02x", cdResponseBuffer[i]);
-                if(i + 1 < lastResponseLength)
+                if (i + 1 < lastResponseLength)
                     Blah(",");
             }
             Blah(")\n");
@@ -657,7 +357,7 @@ void DoStuff()
 
         case Parameter_Input:
             // Send command
-            SendTheCommand();
+            SendTheCommand(menu_index);
             SetState(Command_Result);
             break;
 

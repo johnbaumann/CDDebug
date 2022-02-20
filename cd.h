@@ -51,9 +51,26 @@
 #define CDREG0_DATA_IN_DATAFIFO 0x40
 #define CDREG0_DATA_BUSY 0x80
 
-//
-// Init
-//
+
+#define CD_CMD_COUNT 31
+#define CD_RESPONSE_LENGTH 0x20
+
+typedef struct COMMANDS
+{
+
+    char *displayName;
+    unsigned char paramCount;
+    unsigned char ackCount;
+    unsigned char params[5]; // We can cache these per-command so it doesn't get tedious going back and forth
+
+} COMMANDS;
+
+extern COMMANDS commands[31];
+extern unsigned char cmd_params[5];
+extern ulong lastInt;
+extern ulong lastResponse;
+extern ulong lastResponseLength;
+extern char cdResponseBuffer[CD_RESPONSE_LENGTH];
 
 void CDInitForShell();
 
@@ -64,10 +81,8 @@ ulong CDCheckUnlocked();
 
 int CDStop();
 void CDWaitReady();
-
-//
-// Sending a custom command
-//
+void InitCD();
+void SendTheCommand(char cmd_index);
 
 void CDStartCommand();
 void CDWriteParam( unsigned char inParam );

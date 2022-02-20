@@ -34,4 +34,7 @@
 #define PAD2BUFFER 0x1F800020
 #define pPAD2BUFFER (unsigned char*)PAD2BUFFER
 
+#define SPUVOICE0 0x1F801C00
+#define pSPUVOICE0 (ushort*)SPUVOICE0
+
 #endif
