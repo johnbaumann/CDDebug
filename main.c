@@ -33,6 +33,9 @@
 // Protos
 //
 
+
+char dma_storage[256];
+
 void DoStuff();
 
 //
@@ -42,20 +45,19 @@ void DoStuff();
 // out of 1000
 ulong springiness = 830;
 
-
 enum UIState
 {
     Command_List,
     Parameter_Input,
-    Command_Result
+    Command_Result,
+    SPU_DMA_Test,
+    CD_Load_Test
 } uistate = Command_List;
 
 char is_running = 1;
 
-
 char paramNibbleSelection = 0;
 char paramByteSelection = 0;
-
 
 char menu_glyph = ' ';
 char menu_start_index = 0;
@@ -203,6 +205,47 @@ void HandleParamInput(int inCommand)
     */
 }
 
+void CDPlayerVisualizerInit(void)
+
+{
+    ushort uVar1;
+    ulong dVar2;
+    ushort wVar3;
+
+    uVar1 = pSPU_DELAY;
+    pSPU_DELAY = uVar1;
+    uVar1 = pDMA_DPCR;
+    pDMA_DPCR = uVar1;
+    pSOUND_RAM_DATA_TRANSFER_ADDR = 0;
+    wVar3 = pSOUND_RAM_DATA_TRANSFER_ADDR;
+    while (wVar3 != 0)
+    {
+        wVar3 = pSOUND_RAM_DATA_TRANSFER_ADDR;
+    }
+    wVar3 = pSPU_CTRL_REG_CPUCNT;
+    pSPU_CTRL_REG_CPUCNT = wVar3 | 0x30;
+    wVar3 = pSPU_CTRL_REG_CPUCNT;
+    while ((wVar3 & 0x30) != 0x30)
+    {
+        wVar3 = pSPU_CTRL_REG_CPUCNT;
+    }
+    
+    pDMA_SPU_MADR = &dma_storage;
+    pDMA_SPU_BCR = 0x00200010;
+    pDMA_SPU_CHCR = 0x01000200;
+
+    dVar2 = pDMA_SPU_CHCR;
+    while ((dVar2 & 0x1000000) != 0)
+    {
+        dVar2 = pDMA_SPU_CHCR;
+    }
+    pSOUND_RAM_DATA_TRANSFER_ADDR = 0;
+    wVar3 = pSPU_CTRL_REG_CPUCNT;
+    pSPU_CTRL_REG_CPUCNT = wVar3 & 0xffcf;
+    //unkValWithSetter = 0;
+    return;
+}
+
 void SetState(int inState)
 {
 
@@ -232,10 +275,86 @@ int main()
     //InstallTTY();
 
     InitCD();
-    NewPrintf("d86 = %4X\n", *(volatile unsigned short *)0x1F801D86);
-    NewPrintf("d84 = %4X\n", *(volatile unsigned short *)0x1F801D84);
-    NewPrintf("d82 = %4X\n", *(volatile unsigned short *)0x1F801D82);
-    NewPrintf("d80 = %4X\n", *(volatile unsigned short *)0x1F801D80);
+    //pDMA_DPCR = 0xB9899;
+    pDMA_DPCR = 0x08089899;
+
+    if (uistate == SPU_DMA_Test)
+    {
+        // Setmode 25
+        CDStartCommand();
+        CDWriteParam(25);
+        CDWriteCommand(CD_CMD_SETMODE);
+        CDAck();
+
+        // Play CDDA track 2
+        CDStartCommand();
+        CDWriteParam(2);
+        CDWriteCommand(CD_CMD_PLAY);
+        CDAck();
+
+        CDPlayerVisualizerInit();
+    }
+    else if (uistate == CD_Load_Test)
+    {
+        //Setmode(0x08)
+        CDStartCommand();
+        CDWriteParam(0x08);
+        CDWriteCommand(CD_CMD_SETMODE);
+        CDAck();
+        NewPrintf("SetMode(0x08) = INT%i(", lastInt);
+        for (int i = 0; i < lastResponseLength; i++)
+        {
+            NewPrintf("0x%02x", cdResponseBuffer[i]);
+            if (i + 1 < lastResponseLength)
+                NewPrintf(",");
+        }
+        NewPrintf(")\n");
+
+        //SetLoc(0x00,0x02,0x16)
+        CDStartCommand();
+        CDWriteParam(0x00);
+        CDWriteParam(0x02);
+        CDWriteParam(0x16);
+        CDWriteCommand(CD_CMD_SETLOC);
+        // Should be INT3
+        CDAck();
+        NewPrintf("SetLoc(0x00,0x02,0x16) = INT%i(", lastInt);
+        for (int i = 0; i < lastResponseLength; i++)
+        {
+            NewPrintf("0x%02x", cdResponseBuffer[i]);
+            if (i + 1 < lastResponseLength)
+                NewPrintf(",");
+        }
+        NewPrintf(")\n");
+
+        //ReadN
+        CDStartCommand();
+        CDWriteCommand(CD_CMD_READN);
+        // Should be INT3(stat)
+        CDAck();
+        NewPrintf("ReadN() = INT%i(", lastInt);
+        for (int i = 0; i < lastResponseLength; i++)
+        {
+            NewPrintf("0x%02x", cdResponseBuffer[i]);
+            if (i + 1 < lastResponseLength)
+                NewPrintf(",");
+        }
+        NewPrintf(")\n");
+
+        // Should be INT1(stat)
+        CDAck();
+        NewPrintf("ReadN():delayed = INT%i(", lastInt);
+        for (int i = 0; i < lastResponseLength; i++)
+        {
+            NewPrintf("0x%02x", cdResponseBuffer[i]);
+            if (i + 1 < lastResponseLength)
+                NewPrintf(",");
+        }
+        NewPrintf(")\n");
+
+        return 0;
+    }
+
     // Main loop
     while (is_running)
     {

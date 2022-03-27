@@ -35,6 +35,28 @@
 #define pPAD2BUFFER (unsigned char*)PAD2BUFFER
 
 #define SPUVOICE0 0x1F801C00
-#define pSPUVOICE0 (ushort*)SPUVOICE0
+#define pSPUVOICE0 *(volatile ushort*)SPUVOICE0
+
+#define DMA_DPCR 0x1F8010F0
+#define pDMA_DPCR *(volatile ulong*)DMA_DPCR
+
+#define SPU_DELAY 0x1F801014
+#define pSPU_DELAY *(volatile ulong*)SPU_DELAY
+
+#define SOUND_RAM_DATA_TRANSFER_ADDR 0x1F801DA6
+#define pSOUND_RAM_DATA_TRANSFER_ADDR *(volatile ushort*)SOUND_RAM_DATA_TRANSFER_ADDR
+
+#define SPU_CTRL_REG_CPUCNT 0x1F801DAA
+#define pSPU_CTRL_REG_CPUCNT *(volatile ushort*)SPU_CTRL_REG_CPUCNT
+
+#define DMA_SPU_MADR 0x1F8010C0
+#define pDMA_SPU_MADR *(volatile ulong*)DMA_SPU_MADR
+
+#define DMA_SPU_BCR 0x1F8010C4
+#define pDMA_SPU_BCR *(volatile ulong*)DMA_SPU_BCR
+
+#define DMA_SPU_CHCR 0x1F8010C8
+#define pDMA_SPU_CHCR *(volatile ulong*)DMA_SPU_CHCR
+
 
 #endif

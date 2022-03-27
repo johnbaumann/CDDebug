@@ -92,6 +92,7 @@ int CDAck();             // called 1-many times after each writecommand (one for
 ulong CDLastInt();       // read the last interrupt generated from CDAck();
 ulong CDLastResponse();  // read the last response generated from CDAck();
 int CDReadResponse();    // for e.g. GetLocP which requires multiple responses for one ack
+int CDClearInts();
 
 // Multiple responses?
 // return: number of response bytes returned

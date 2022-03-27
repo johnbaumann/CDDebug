@@ -32,7 +32,7 @@
     {0, 0, 0, 0, 0},
     "CdlReadN",
     0,
-    1,
+    2,
     {0, 0, 0, 0, 0},
     "CdlStandby",
     0,
@@ -143,7 +143,7 @@ char cdResponseBuffer[CD_RESPONSE_LENGTH];
 char *GetCDResponseBuffer() { return (char *)&cdResponseBuffer; }
 
 
-static __attribute__((always_inline)) int CDClearInts()
+__attribute__((always_inline)) int CDClearInts()
 {
 
     pCDREG0 = 1;
@@ -290,7 +290,7 @@ void CD_initvol()
 {
     short *spu_base_address;
 
-    spu_base_address = pSPUVOICE0;
+    spu_base_address = (short *)SPUVOICE0;
     //if((pSPUVOICE0 )
     //if 
 
@@ -299,11 +299,17 @@ void CD_initvol()
     *(volatile unsigned short *)0x1F801D82 = 0x3fff;
 
     // cd vol L & R
-    *(volatile unsigned short *)0x1F801DB0 = 0x3fff;
-    *(volatile unsigned short *)0x1F801DB2 = 0x3fff;
+    //*(volatile unsigned short *)0x1F801DB0 = 0x3fff;
+    //*(volatile unsigned short *)0x1F801DB2 = 0x3fff;
+
+    // External Audio Input Volume
+    *(volatile unsigned short *)0x1F801DB4 = 0x3fff;
+    *(volatile unsigned short *)0x1F801DB6 = 0x3fff;
+
 
     // SPU Control register
-    *(volatile unsigned short *)0x1F801DAA = 0xc001; // CD audio enable
+    //*(volatile unsigned short *)0x1F801DAA = 0xc001; // CD audio enable
+    *(volatile unsigned short *)0x1F801DAA = 0xc002; // External Audio Enable
 
     pCDREG0 = 2;
     pCDREG2 = 0x80;
